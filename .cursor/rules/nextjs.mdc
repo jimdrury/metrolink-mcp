@@ -1,0 +1,409 @@
+---
+description: These rules provides guidance for NextJS, always follow these rules when writing nextjs code
+alwaysApply: false
+---
+
+# Next.js Style Guide
+
+## File Structure
+
+### Route Structure and Colocation
+
+- When colocating code within the route structure (app folder), **prefix folders with an underscore to prevent routing**
+- Folders prefixed with `_` are ignored by Next.js routing
+- Use this pattern for: `_components/`, `_lib/`, `_hooks/`, `_utils/`, `_types/`, etc.
+- Example:
+  ```
+  src/app/dashboard/
+    ├── page.tsx
+    ├── layout.tsx
+    ├── _components/        # Not a route - underscore prefix
+    │   ├── DashboardCard.tsx
+    │   └── StatsWidget.tsx
+    ├── _lib/               # Not a route - underscore prefix
+    │   └── dashboard-utils.ts
+    └── settings/           # This IS a route (/dashboard/settings)
+        └── page.tsx
+  ```
+
+## Route Files Pattern
+
+Route files follow a specific naming and export pattern:
+
+### Page Components (`page.tsx`)
+
+- Component must be named `Page`
+- Props type from global `PageProps<AppRoute>` where `AppRoute` is the route path
+- No need to import `PageProps` - it's globally available
+- Use React's `FC` generic for the component definition
+- Pattern:
+  ```tsx
+  import type { FC } from 'react';
+
+  const Page: FC<PageProps<'/route-path'>> = async ({ params, searchParams }) => {
+    // implementation
+  };
+  
+  export default Page;
+  ```
+
+### Layout Components (`layout.tsx`)
+
+- Component must be named `Layout`
+- Props type from global `LayoutProps<LayoutRoute>` where `LayoutRoute` is the route path
+- No need to import `LayoutProps` - it's globally available
+- Use React's `FC` generic for the component definition
+- Pattern:
+  ```tsx
+  import type { FC } from 'react';
+
+  const Layout: FC<LayoutProps<'/route-path'>> = async ({ params, children }) => {
+    // implementation
+  };
+  
+  export default Layout;
+  ```
+
+### Other Route Files
+
+Same `FC` pattern applies to:
+- `not-found.tsx` → component named `NotFound`: `const NotFound: FC = () => { ... }`
+- `forbidden.tsx` → component named `Forbidden`: `const Forbidden: FC = () => { ... }`
+- `unauthorised.tsx` → component named `Unauthorised`: `const Unauthorised: FC = () => { ... }`
+- `template.tsx` → component named `Template`: `const Template: FC<LayoutProps<AppRoute>> = ({ children }) => { ... }`
+- `default.tsx` → component named `Default`: `const Default: FC = () => { ... }`
+
+## Server Actions Colocation
+
+### Colocation Pattern
+
+- Colocate Server Actions with related components or in `actions.ts` files within feature directories
+- Keep actions close to where they're used
+- **When colocating code within the route structure (app folder), prefix folders with an underscore to prevent routing**
+- Example structure:
+  ```
+  src/app/users/
+    ├── page.tsx
+    ├── actions.ts              # Server Actions for users
+    ├── _components/            # Underscore prefix prevents routing
+    │   └── UserForm.tsx
+    ├── _lib/                   # Underscore prefix prevents routing
+    │   └── utils.ts
+    └── _hooks/                 # Underscore prefix prevents routing
+        └── useUserData.ts
+  ```
+
+## Environment Variables
+
+### Zod Validation for Environment Variables
+
+- **ALWAYS** validate `process.env` using Zod schemas
+- Create a centralized environment schema file
+- Parse environment variables at application startup using `parse` (not `safeParse`)
+- **NEVER use `NEXT_PUBLIC_` prefix** - all environment variables are server-side only
+- Export typed environment variables
+- Example:
+  ```ts
+  // src/env.ts
+  import { z } from 'zod';
+  
+  const envSchema = z.object({
+    DATABASE_URL: z.string().url('Invalid database URL'),
+    API_SECRET_KEY: z.string().min(1, 'API secret key is required'),
+    API_URL: z.string().url('Invalid API URL'),
+    APP_NAME: z.string().min(1, 'App name is required'),
+  });
+  
+  type Env = z.infer<typeof envSchema>;
+  
+  // Parse and validate (will throw on error)
+  const env = envSchema.parse(process.env);
+  
+  // Export typed environment variables
+  export { env };
+  
+  // Type-safe access
+  // env.DATABASE_URL (typed as string)
+  // env.API_URL (typed as string)
+  ```
+
+### Environment Variable Usage
+
+- Import and use the validated `env` object instead of `process.env`
+- Never use `NEXT_PUBLIC_` prefix
+- Example:
+  ```ts
+  // ❌ WRONG - Don't access process.env directly
+  const apiUrl = process.env.API_URL;
+  
+  // ✅ CORRECT - Use validated env object
+  import { env } from '@/env';
+  const apiUrl = env.API_URL;
+  ```
+
+## Middleware (proxy.tsx)
+
+### Next.js 16 Middleware Pattern
+
+- In Next.js 16, middleware is now called `proxy.tsx` (not `middleware.ts`)
+- Place `proxy.tsx` in the `src/` directory (root of the app directory)
+- Export a default function that handles request/response proxying
+- Pattern:
+  ```tsx
+  // src/proxy.tsx
+  import { NextRequest, NextResponse } from 'next/server';
+  
+  export default async function proxy(request: NextRequest) {
+    // Middleware logic
+    // Modify request/response as needed
+  
+    return NextResponse.next();
+  }
+  ```
+
+### Middleware Configuration
+
+- Configure middleware matching in `next.config.ts` if needed
+- Use for authentication, request modification, response headers, etc.
+- Example:
+  ```tsx
+  export default async function proxy(request: NextRequest) {
+    // Authentication check
+    const token = request.cookies.get('auth-token');
+  
+    if (!token && request.nextUrl.pathname.startsWith('/dashboard')) {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+  
+    // Add custom headers
+    const response = NextResponse.next();
+    response.headers.set('X-Custom-Header', 'value');
+  
+    return response;
+  }
+  ```
+
+## Error Handling
+
+### Route-Level Error Pages
+
+- Use `not-found.tsx` for 404 pages
+- Use `forbidden.tsx` for 403 pages
+- Use `unauthorised.tsx` for 401 pages
+- These are route-specific components, not global error boundaries
+- **DO NOT use Next.js global error boundaries** (`error.tsx` files) - handle errors at component level (see React guide)
+
+## Client Components vs Server Components
+
+### When to Use Server Components (Default)
+
+- **Default to Server Components** - All components are Server Components by default in Next.js 16
+- Use Server Components for:
+  - Data fetching (direct database queries, API calls)
+  - Accessing backend resources (filesystem, environment variables)
+  - Keeping sensitive information on the server (API keys, tokens)
+  - Large dependencies that should not be sent to the client
+  - Static content and layouts
+
+### When to Use Client Components
+
+- Use Client Components (`'use client'`) only when necessary:
+  - Interactivity (onClick, onChange, etc.)
+  - Browser APIs (localStorage, window, document)
+  - React hooks (useState, useEffect, useContext, etc.)
+  - Event listeners
+  - Third-party libraries that require client-side JavaScript
+
+### "use client" Directive
+
+- Place `'use client'` at the **top of the file**, before any imports
+- Use **sparingly** - only add when the component truly needs client-side features
+- Create a boundary - components that import a Client Component become Client Components
+- Pattern:
+  ```tsx
+  'use client';
+  
+  import type { FC } from 'react';
+  import { useState } from 'react';
+  
+  interface ButtonProps {
+    onClick: () => void;
+  }
+  
+  const Button: FC<ButtonProps> = ({ onClick }) => {
+    const [count, setCount] = useState(0);
+    return <button onClick={onClick}>Click me</button>;
+  };
+  
+  export default Button;
+  ```
+
+### Component Composition Strategy
+
+- Keep Server Components as the default
+- Extract interactive parts into small Client Components
+- Compose Server and Client Components together
+- Example:
+  ```tsx
+// Server Component (page.tsx)
+import type { FC } from 'react';
+import { ClientButton } from './_components/ClientButton';
+
+const Page: FC<PageProps<'/route'>> = async () => {
+  const data = await fetchData(); // Server-side data fetching
+
+  return (
+    <div>
+      <h1>{data.title}</h1>
+      <ClientButton /> {/* Client Component for interactivity */}
+    </div>
+  );
+};
+
+export default Page;
+  ```
+
+## Suspense Boundaries
+
+### Route-Level Suspense
+
+- Use Suspense at the route level for loading states
+- Wrap async Server Components in Suspense boundaries
+- Pattern:
+  ```tsx
+import type { FC } from 'react';
+import { Suspense } from 'react';
+
+const Page: FC<PageProps<'/route'>> = async () => {
+  return (
+    <div>
+      <Suspense fallback={<Loading />}>
+        <AsyncDataComponent />
+      </Suspense>
+    </div>
+  );
+};
+  ```
+
+## Metadata and SEO
+
+### Static Metadata Export
+
+- Export `metadata` object from `layout.tsx` or `page.tsx` for static metadata
+- Pattern:
+  ```tsx
+import type { Metadata } from 'next';
+import type { FC } from 'react';
+
+export const metadata: Metadata = {
+  title: 'Page Title',
+  description: 'Page description',
+  openGraph: {
+    title: 'Page Title',
+    description: 'Page description',
+    images: ['/og-image.jpg'],
+  },
+};
+
+const Page: FC<PageProps<'/route'>> = () => {
+  return <div>Content</div>;
+};
+
+export default Page;
+  ```
+
+### Dynamic Metadata with generateMetadata
+
+- Use `generateMetadata` function for dynamic metadata
+- Must be async and return `Metadata` object
+- Pattern:
+  ```tsx
+  import type { Metadata } from 'next';
+  
+  export const generateMetadata = async ({
+    params,
+  }: {
+    params: Promise<{ id: string }>;
+  }): Promise<Metadata> => {
+    const { id } = await params;
+    const data = await fetchData(id);
+  
+  return {
+    title: data.title,
+    description: data.description,
+  };
+};
+
+const Page: FC<PageProps<'/post/[id]'>> = async ({ params }) => {
+  // page implementation
+};
+
+export default Page;
+  ```
+
+### Structured Data (JSON-LD)
+
+- Use JSON-LD for structured data (Schema.org)
+- Add structured data in layout or page components
+- Pattern:
+  ```tsx
+  import type { FC } from 'react';
+
+  const Page: FC<PageProps<'/route'>> = () => {
+    const structuredData = {
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      headline: 'Article Title',
+      author: {
+        '@type': 'Person',
+        name: 'Author Name',
+      },
+    };
+  
+    return (
+      <>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        />
+        <article>
+          {/* content */}
+        </article>
+      </>
+    );
+  };
+  ```
+
+## Code Organization
+
+### Shared vs Feature-Specific Code
+
+- **Shared code**: Place in `src/lib/`, `src/utils/`, `src/types/`
+  - Utilities used across multiple features
+  - Common types and interfaces
+  - Shared hooks
+  - Constants
+
+- **Feature-specific code**: Colocate with feature in route structure
+  - Components used only in one feature
+  - Feature-specific hooks
+  - Feature-specific types
+  - Use underscore prefix for non-route folders (`_components/`, `_lib/`)
+
+- Example structure:
+  ```
+  src/
+    ├── app/
+    │   ├── dashboard/
+    │   │   ├── page.tsx
+    │   │   ├── _components/      # Feature-specific
+    │   │   │   └── DashboardCard.tsx
+    │   │   └── _lib/             # Feature-specific
+    │   │       └── dashboard-utils.ts
+    │   └── layout.tsx
+    ├── lib/                      # Shared
+    │   ├── utils.ts
+    │   └── constants.ts
+    └── components/               # Shared
+        └── Button.tsx
+  ```

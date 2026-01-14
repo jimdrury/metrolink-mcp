@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: tfgm-postgres
+    environment:
+      POSTGRES_DB: tfgm_metrolink
+      POSTGRES_USER: tfgm
+      POSTGRES_PASSWORD: tfgm_dev_password
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tfgm -d tfgm_metrolink"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local

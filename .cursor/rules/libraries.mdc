@@ -1,0 +1,297 @@
+---
+description: This rule guides on the use of React Libraries
+alwaysApply: false
+---
+# Libraries Guide
+
+## Zustand State Management
+
+### Store Structure
+
+- Create stores in `src/stores/` directory
+- Use descriptive store names (e.g., `useAuthStore.ts`, `useCartStore.ts`)
+- Export store hook with `use` prefix
+- Pattern:
+  ```ts
+  // src/stores/useAuthStore.ts
+  import { create } from 'zustand';
+  
+  interface AuthState {
+    user: User | null;
+    isAuthenticated: boolean;
+    login: (user: User) => void;
+    logout: () => void;
+  }
+  
+  export const useAuthStore = create<AuthState>((set) => ({
+    user: null,
+    isAuthenticated: false,
+    login: (user) => set({ user, isAuthenticated: true }),
+    logout: () => set({ user: null, isAuthenticated: false }),
+  }));
+  ```
+
+### Slice Pattern for Large Stores
+
+- Use slice pattern for complex stores with multiple concerns
+- Split store into logical slices
+- Combine slices using Zustand's middleware or composition
+- Pattern:
+  ```ts
+  // src/stores/slices/authSlice.ts
+  import { StateCreator } from 'zustand';
+  
+  interface AuthSlice {
+    user: User | null;
+    login: (user: User) => void;
+    logout: () => void;
+  }
+  
+  export const createAuthSlice: StateCreator<AuthSlice> = (set) => ({
+    user: null,
+    login: (user) => set({ user }),
+    logout: () => set({ user: null }),
+  });
+  
+  // src/stores/useAppStore.ts
+  import { create } from 'zustand';
+  import { createAuthSlice, AuthSlice } from './slices/authSlice';
+  import { createCartSlice, CartSlice } from './slices/cartSlice';
+  
+  type AppStore = AuthSlice & CartSlice;
+  
+  export const useAppStore = create<AppStore>()((...a) => ({
+    ...createAuthSlice(...a),
+    ...createCartSlice(...a),
+  }));
+  ```
+
+### Selector Patterns for Performance
+
+- Use selectors to prevent unnecessary re-renders
+- Select only the state you need
+- Use shallow comparison for object/array selections
+- Pattern:
+  ```tsx
+  // ❌ WRONG - Selects entire store, causes re-render on any state change
+  const Component = () => {
+    const store = useAuthStore();
+    return <div>{store.user?.name}</div>;
+  };
+  
+  // ✅ CORRECT - Selects only needed state
+  const Component = () => {
+    const user = useAuthStore((state) => state.user);
+    return <div>{user?.name}</div>;
+  };
+  
+  // ✅ CORRECT - Multiple selectors with shallow comparison
+  import { shallow } from 'zustand/shallow';
+  
+  const Component = () => {
+    const { user, isAuthenticated } = useAuthStore(
+      (state) => ({ user: state.user, isAuthenticated: state.isAuthenticated }),
+      shallow
+    );
+    return <div>{user?.name}</div>;
+  };
+  ```
+
+## Framer Motion Animations
+
+### Motion Component Usage
+
+- Use `motion` components instead of regular HTML elements
+- Import specific motion components (tree-shaking)
+- Pattern:
+  ```tsx
+  import { motion } from 'framer-motion';
+  
+  const Component: FC = () => {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3 }}
+      >
+        Content
+      </motion.div>
+    );
+  };
+  ```
+
+### Variants Pattern
+
+- Use variants for reusable animation patterns
+- Define variants outside component or in separate file
+- Use variant names for cleaner code
+- Pattern:
+  ```tsx
+  import { motion } from 'framer-motion';
+  
+  const fadeInVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0 },
+  };
+  
+  const Component: FC = () => {
+    return (
+      <motion.div
+        variants={fadeInVariants}
+        initial="hidden"
+        animate="visible"
+        transition={{ duration: 0.3 }}
+      >
+        Content
+      </motion.div>
+    );
+  };
+  ```
+
+### Performance Best Practices
+
+- Use `layout` prop for layout animations (more performant)
+- Use `will-change` CSS property for complex animations
+- Avoid animating properties that trigger layout recalculations
+- Use `AnimatePresence` for exit animations
+- Pattern:
+  ```tsx
+  import { motion, AnimatePresence } from 'framer-motion';
+  
+  const Component: FC<{ items: Item[] }> = ({ items }) => {
+    return (
+      <AnimatePresence>
+        {items.map((item) => (
+          <motion.div
+            key={item.id}
+            layout
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            {item.content}
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    );
+  };
+  ```
+
+## date-fns Date Utilities
+
+### Tree-Shaking Import Patterns
+
+- **Always import specific functions** from date-fns (not default import)
+- This enables tree-shaking and reduces bundle size
+- Pattern:
+  ```ts
+  // ✅ CORRECT - Tree-shakeable
+  import { format, parseISO, addDays, differenceInDays } from 'date-fns';
+  
+  // ❌ WRONG - Imports entire library
+  import * as dateFns from 'date-fns';
+  ```
+
+### Date Formatting Patterns
+
+- Use `format` function for date formatting
+- Use `formatDistance` or `formatDistanceToNow` for relative dates
+- Use `parseISO` for parsing ISO date strings
+- Pattern:
+  ```ts
+  import { format, formatDistanceToNow, parseISO } from 'date-fns';
+  
+  const date = new Date();
+  const formatted = format(date, 'PPP'); // "January 1st, 2024"
+  const relative = formatDistanceToNow(date, { addSuffix: true }); // "2 days ago"
+  const parsed = parseISO('2024-01-01T00:00:00Z');
+  ```
+
+### Common Utility Patterns
+
+- Use `addDays`, `subDays`, `addMonths`, etc. for date arithmetic
+- Use `isBefore`, `isAfter`, `isEqual` for date comparisons
+- Use `startOfDay`, `endOfDay` for day boundaries
+- Pattern:
+  ```ts
+  import {
+    addDays,
+    subDays,
+    isBefore,
+    isAfter,
+    startOfDay,
+    endOfDay,
+  } from 'date-fns';
+  
+  const today = new Date();
+  const tomorrow = addDays(today, 1);
+  const yesterday = subDays(today, 1);
+  const isPast = isBefore(someDate, today);
+  const dayStart = startOfDay(today);
+  const dayEnd = endOfDay(today);
+  ```
+
+## react-use Hooks
+
+### Preference for react-use Hooks
+
+- **Prefer hooks from `react-use` library** over custom implementations when available
+- `react-use` provides battle-tested, well-maintained hooks for common use cases
+- Check `react-use` documentation before creating custom hooks for common patterns
+- Import specific hooks (tree-shaking friendly)
+
+### Common react-use Hooks
+
+- Use `useLocalStorage` / `useSessionStorage` for persistent state
+- Use `useDebounce` / `useThrottle` for performance optimization
+- Use `useClickAway` for detecting clicks outside elements
+- Use `useMedia` for responsive design
+- Use `useWindowSize` for window dimensions
+- Use `useAsync` for async operations
+- Pattern:
+  ```tsx
+  import { useLocalStorage, useDebounce, useClickAway } from 'react-use';
+  
+  const Component: FC = () => {
+    const [value, setValue] = useLocalStorage('key', 'default');
+    const [search, setSearch] = useState('');
+    const debouncedSearch = useDebounce(search, 500);
+    const ref = useRef<HTMLDivElement>(null);
+    
+    useClickAway(ref, () => {
+      // Handle click outside
+    });
+    
+    return (
+      <div ref={ref}>
+        {/* component */}
+      </div>
+    );
+  };
+  ```
+
+### When to Use react-use vs Custom Hooks
+
+- **Use react-use hooks** for:
+  - Common patterns (localStorage, debounce, media queries, etc.)
+  - Browser API interactions (window size, scroll, etc.)
+  - Event handling (click away, keyboard, etc.)
+  - Performance utilities (debounce, throttle, etc.)
+
+- **Create custom hooks** for:
+  - Business logic specific to your application
+  - Complex state management that doesn't fit react-use patterns
+  - Domain-specific operations
+
+### Import Patterns
+
+- Import specific hooks from `react-use` (tree-shaking)
+- Group related imports together
+- Pattern:
+  ```tsx
+  // ✅ CORRECT - Import specific hooks
+  import { useLocalStorage, useDebounce, useClickAway } from 'react-use';
+  
+  // ❌ WRONG - Import entire library
+  import * as reactUse from 'react-use';
+  ```
